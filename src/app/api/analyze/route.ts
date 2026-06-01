@@ -80,7 +80,7 @@ export async function POST(request: Request) {
 
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-2.0-flash',
     systemInstruction: VENEMAK_SYSTEM_PROMPT,
   })
 
@@ -100,9 +100,14 @@ export async function POST(request: Request) {
 
     const { response } = result
 
-    if (response.promptFeedback?.blockReason) {
+    const blocked =
+      response.promptFeedback?.blockReason ||
+      response.candidates?.[0]?.finishReason === 'SAFETY' ||
+      response.candidates?.[0]?.finishReason === 'OTHER'
+
+    if (blocked) {
       return Response.json(
-        { error: 'Изображение заблокировано фильтром безопасности AI. Убедитесь, что изображение является медицинским и не содержит посторонних материалов.' },
+        { error: 'Изображение заблокировано фильтром безопасности AI. Попробуйте другое изображение или переформулируйте вопрос.' },
         { status: 422 }
       )
     }
