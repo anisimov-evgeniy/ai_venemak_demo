@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai'
 import { VENEMAK_SYSTEM_PROMPT } from '@/lib/venemakPrompt'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -19,6 +19,14 @@ function checkRateLimit(): boolean {
   requestCount++
   return true
 }
+
+// Permissive safety settings for medical imaging (blood, wounds, tissue are legitimate content)
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+]
 
 export async function POST(request: Request) {
   if (!process.env.GEMINI_API_KEY) {
@@ -77,12 +85,29 @@ export async function POST(request: Request) {
   })
 
   try {
-    const result = await model.generateContent([
-      questionField.trim(),
-      { inlineData: { data: base64, mimeType: imageField.type } },
-    ])
+    const result = await model.generateContent({
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: questionField.trim() },
+            { inlineData: { data: base64, mimeType: imageField.type } },
+          ],
+        },
+      ],
+      safetySettings: SAFETY_SETTINGS,
+    })
 
-    const answer = result.response.text().replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1')
+    const { response } = result
+
+    if (response.promptFeedback?.blockReason) {
+      return Response.json(
+        { error: 'Изображение заблокировано фильтром безопасности AI. Убедитесь, что изображение является медицинским и не содержит посторонних материалов.' },
+        { status: 422 }
+      )
+    }
+
+    const answer = response.text().replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1')
     if (!answer) {
       return Response.json({ error: 'Пустой ответ от AI. Попробуйте ещё раз.' }, { status: 500 })
     }
