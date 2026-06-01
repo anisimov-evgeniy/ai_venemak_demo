@@ -24,8 +24,8 @@ function checkRateLimit(): boolean {
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ]
 
 export async function POST(request: Request) {
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         {
           role: 'user',
           parts: [
-            { text: questionField.trim() },
+            { text: `[Профессиональный медицинский запрос от врача-клинициста для клинического анализа медицинского изображения]\n\n${questionField.trim()}` },
             { inlineData: { data: base64, mimeType: imageField.type } },
           ],
         },
