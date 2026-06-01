@@ -1,4 +1,4 @@
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import { VENEMAK_SYSTEM_PROMPT } from '@/lib/venemakPrompt'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -21,9 +21,9 @@ function checkRateLimit(): boolean {
 }
 
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     return Response.json(
-      { error: 'Сервис не настроен: отсутствует OPENAI_API_KEY. Обратитесь к администратору.' },
+      { error: 'Сервис не настроен: отсутствует GEMINI_API_KEY. Обратитесь к администратору.' },
       { status: 500 }
     )
   }
@@ -69,27 +69,20 @@ export async function POST(request: Request) {
 
   const arrayBuffer = await imageField.arrayBuffer()
   const base64 = Buffer.from(arrayBuffer).toString('base64')
-  const dataUrl = `data:${imageField.type};base64,${base64}`
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    systemInstruction: VENEMAK_SYSTEM_PROMPT,
+  })
 
   try {
-    const response = await client.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: VENEMAK_SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: dataUrl } },
-            { type: 'text', text: questionField.trim() },
-          ],
-        },
-      ],
-      max_tokens: 1500,
-    })
+    const result = await model.generateContent([
+      questionField.trim(),
+      { inlineData: { data: base64, mimeType: imageField.type } },
+    ])
 
-    const answer = response.choices[0]?.message?.content
+    const answer = result.response.text()
     if (!answer) {
       return Response.json({ error: 'Пустой ответ от AI. Попробуйте ещё раз.' }, { status: 500 })
     }

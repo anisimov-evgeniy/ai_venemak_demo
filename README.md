@@ -11,7 +11,7 @@
 - **Next.js 15** — App Router, Server Components, Route Handlers
 - **TypeScript** — строгая типизация, без `any`
 - **Tailwind CSS v3** — без сторонних UI-библиотек
-- **OpenAI gpt-4o** — мультимодальный анализ изображений
+- **Google Gemini 2.0 Flash** — мультимодальный анализ изображений (бесплатный tier)
 
 ---
 
@@ -40,7 +40,7 @@ src/
 │   ├── globals.css
 │   └── api/
 │       └── analyze/
-│           └── route.ts          # POST /api/analyze — OpenAI + валидация + rate limit
+│           └── route.ts          # POST /api/analyze — Gemini + валидация + rate limit
 ├── lib/
 │   └── venemakPrompt.ts          # System prompt ВЕНЕМАК
 └── types/
@@ -68,8 +68,8 @@ cp .env.local.example .env.local
 Открыть `.env.local` и заполнить:
 
 ```env
-# Обязательный. Получить на platform.openai.com
-OPENAI_API_KEY=sk-...
+# Обязательный. Получить бесплатно на aistudio.google.com → Get API key
+GEMINI_API_KEY=AIza...
 
 # Опциональный. Если задан — доступ только по /?token=значение
 DEMO_ACCESS_TOKEN=
@@ -96,7 +96,7 @@ npm run start
 
 | Переменная | Обязательная | Описание |
 |---|---|---|
-| `OPENAI_API_KEY` | Да | API-ключ OpenAI. Получить на [platform.openai.com](https://platform.openai.com) |
+| `GEMINI_API_KEY` | Да | API-ключ Google Gemini. Получить бесплатно на [aistudio.google.com](https://aistudio.google.com) |
 | `DEMO_ACCESS_TOKEN` | Нет | Если задан, страница доступна только по `/?token=значение`. Если не задан — доступ открыт |
 
 ---
@@ -138,7 +138,7 @@ http://localhost:3000/?token=ваш_токен
 
 ## Безопасность и приватность
 
-- Изображение передаётся напрямую в OpenAI и **нигде не сохраняется**: ни на сервере, ни в базе, ни в `localStorage`
+- Изображение передаётся напрямую в Google Gemini API и **нигде не сохраняется**: ни на сервере, ни в базе, ни в `localStorage`
 - В `localStorage` хранятся только текст вопроса и текст последнего ответа
 - Кнопка «Очистить» удаляет все данные из `localStorage`
 - Файл обрабатывается в памяти один раз и не пишется на диск
