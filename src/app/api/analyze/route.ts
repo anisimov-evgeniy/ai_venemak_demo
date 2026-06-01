@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       { inlineData: { data: base64, mimeType: imageField.type } },
     ])
 
-    const answer = result.response.text()
+    const answer = result.response.text().replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1')
     if (!answer) {
       return Response.json({ error: 'Пустой ответ от AI. Попробуйте ещё раз.' }, { status: 500 })
     }
