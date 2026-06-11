@@ -1,13 +1,11 @@
-import {
-  GoogleGenerativeAI,
-  HarmCategory,
-  HarmBlockThreshold,
-} from '@google/generative-ai'
+import OpenAI from 'openai'
+import type { ChatCompletionContentPart } from 'openai/resources/chat/completions'
 import { VENEMAK_SYSTEM_PROMPT } from '@/lib/venemakPrompt'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_SIZE = 10 * 1024 * 1024
 const DAILY_LIMIT = 100
+const MODEL = 'gpt-4o'
 
 let requestCount = 0
 let currentDay = new Date().toDateString()
@@ -26,27 +24,6 @@ function checkRateLimit(): boolean {
   return true
 }
 
-// Эти настройки влияют только на настраиваемые safety-категории Gemini.
-// Некоторые внутренние фильтры Google отключить нельзя.
-const SAFETY_SETTINGS = [
-  {
-    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-  {
-    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-    threshold: HarmBlockThreshold.BLOCK_NONE,
-  },
-]
-
 function normalizeAnswer(text: string): string {
   return text
     .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -54,53 +31,43 @@ function normalizeAnswer(text: string): string {
     .trim()
 }
 
-function buildMedicalPrompt(question: string): string {
-  return `
+function buildMedicalPrompt(question: string, hasImage: boolean): string {
+  if (hasImage) {
+    return `
 [Клинический анализ медицинского изображения]
 
-Контекст:
-Пользователь загрузил медицинское изображение и просит помочь с его визуальным анализом.
-
-Правила ответа:
-- Не ставь окончательный диагноз.
-- Не утверждай, что это точное медицинское заключение.
-- Не назначай лечение.
-- Не давай инструкций по самостоятельному лечению.
-- Описывай только визуально наблюдаемые признаки на изображении.
-- Используй осторожные формулировки: "может соответствовать", "визуально похоже", "требует подтверждения врачом".
-- В конце укажи, что финальное заключение должен делать врач с учетом анамнеза, жалоб, протокола эндоскопии, биопсии и лабораторных данных.
+Пользователь загрузил медицинское изображение (это может быть снимок внутренних органов, тканей или иной медицинский визуальный материал) и просит помочь с его визуальным анализом.
 
 Структура ответа:
 1. Краткое визуальное описание снимка.
-2. Видимые патологические признаки.
+2. Видимые патологические признаки (или их отсутствие).
 3. Возможные дифференциальные варианты.
 4. Что врачу стоит уточнить/проверить дополнительно.
 5. Осторожное предварительное резюме.
+
+Соблюдай все правила и ограничения из системной инструкции ВЕНЕМАК.
+
+Вопрос пользователя:
+${question.trim()}
+    `.trim()
+  }
+
+  return `
+[Клиническая консультация по текстовому вопросу]
+
+Пользователь задал клинический вопрос без изображения. Дай обоснованный профессиональный ответ, соблюдая все правила и ограничения из системной инструкции ВЕНЕМАК. Если для качественного ответа не хватает данных — уточни, какие сведения нужны.
 
 Вопрос пользователя:
 ${question.trim()}
   `.trim()
 }
 
-function getSafeResponseText(response: Awaited<ReturnType<any>>): string {
-  try {
-    return response.text()
-  } catch {
-    const parts = response.candidates?.[0]?.content?.parts ?? []
-
-    return parts
-      .map((part: { text?: string }) => part.text ?? '')
-      .join('\n')
-      .trim()
-  }
-}
-
 export async function POST(request: Request) {
-  if (!process.env.GEMINI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY) {
     return Response.json(
       {
         error:
-          'Сервис не настроен: отсутствует GEMINI_API_KEY. Обратитесь к администратору.',
+          'Сервис не настроен: отсутствует OPENAI_API_KEY. Обратитесь к администратору.',
       },
       { status: 500 }
     )
@@ -130,146 +97,82 @@ export async function POST(request: Request) {
   const imageField = formData.get('image')
   const questionField = formData.get('question')
 
-  if (!(imageField instanceof File)) {
-    return Response.json(
-      { error: 'Изображение не передано.' },
-      { status: 400 }
-    )
-  }
-
   if (typeof questionField !== 'string' || !questionField.trim()) {
-    return Response.json(
-      { error: 'Вопрос не передан.' },
-      { status: 400 }
-    )
+    return Response.json({ error: 'Вопрос не передан.' }, { status: 400 })
   }
 
-  if (!ALLOWED_TYPES.has(imageField.type)) {
-    return Response.json(
-      { error: 'Недопустимый формат файла. Разрешены: JPG, PNG, WEBP.' },
-      { status: 400 }
-    )
+  const hasImage = imageField instanceof File && imageField.size > 0
+
+  let imageDataUrl: string | null = null
+
+  if (hasImage) {
+    const image = imageField as File
+
+    if (!ALLOWED_TYPES.has(image.type)) {
+      return Response.json(
+        { error: 'Недопустимый формат файла. Разрешены: JPG, PNG, WEBP.' },
+        { status: 400 }
+      )
+    }
+
+    if (image.size > MAX_SIZE) {
+      return Response.json(
+        { error: 'Размер файла превышает 10 МБ.' },
+        { status: 400 }
+      )
+    }
+
+    const arrayBuffer = await image.arrayBuffer()
+    const base64 = Buffer.from(arrayBuffer).toString('base64')
+    imageDataUrl = `data:${image.type};base64,${base64}`
   }
 
-  if (imageField.size > MAX_SIZE) {
-    return Response.json(
-      { error: 'Размер файла превышает 10 МБ.' },
-      { status: 400 }
-    )
-  }
+  const promptText = buildMedicalPrompt(questionField, hasImage)
 
-  const arrayBuffer = await imageField.arrayBuffer()
-  const base64 = Buffer.from(arrayBuffer).toString('base64')
+  const userContent: string | ChatCompletionContentPart[] = hasImage
+    ? [
+        { type: 'text', text: promptText },
+        {
+          type: 'image_url',
+          image_url: { url: imageDataUrl as string, detail: 'high' },
+        },
+      ]
+    : promptText
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: VENEMAK_SYSTEM_PROMPT,
-    generationConfig: {
-      temperature: 0.2,
-      topP: 0.8,
-      topK: 40,
-      maxOutputTokens: 4096,
-    },
-  })
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
   try {
-    const result = await model.generateContent({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: buildMedicalPrompt(questionField),
-            },
-            {
-              inlineData: {
-                data: base64,
-                mimeType: imageField.type,
-              },
-            },
-          ],
-        },
+    const completion = await openai.chat.completions.create({
+      model: MODEL,
+      temperature: 0.2,
+      max_tokens: 1500,
+      messages: [
+        { role: 'system', content: VENEMAK_SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
       ],
-      safetySettings: SAFETY_SETTINGS,
     })
 
-    const { response } = result
-    const candidate = response.candidates?.[0]
-    const finishReason = candidate?.finishReason
+    const choice = completion.choices?.[0]
+    const refusal = choice?.message?.refusal
 
-    const debugInfo = {
-      promptBlockReason: response.promptFeedback?.blockReason,
-      promptSafetyRatings: response.promptFeedback?.safetyRatings,
-      finishReason,
-      finishMessage: candidate?.finishMessage,
-      candidateSafetyRatings: candidate?.safetyRatings,
-      usageMetadata: response.usageMetadata,
-    }
-
-    console.dir(
-      {
-        geminiDebug: debugInfo,
-      },
-      { depth: null }
-    )
-
-    if (response.promptFeedback?.blockReason) {
+    if (refusal) {
       return Response.json(
         {
-          error: 'Запрос заблокирован на уровне входных данных.',
-          reason: response.promptFeedback.blockReason,
-          safetyRatings: response.promptFeedback.safetyRatings,
+          error: 'Модель отказалась обрабатывать запрос.',
+          reason: refusal,
         },
         { status: 422 }
       )
     }
 
-    if (finishReason === 'SAFETY') {
-      return Response.json(
-        {
-          error: 'Ответ модели заблокирован safety-фильтром.',
-          reason: finishReason,
-          finishMessage: candidate?.finishMessage,
-          safetyRatings: candidate?.safetyRatings,
-        },
-        { status: 422 }
-      )
-    }
-
-    if (finishReason === 'RECITATION') {
-      return Response.json(
-        {
-          error: 'Ответ модели заблокирован из-за риска дословного воспроизведения контента.',
-          reason: finishReason,
-          finishMessage: candidate?.finishMessage,
-        },
-        { status: 422 }
-      )
-    }
-
-    if (finishReason === 'OTHER') {
-      return Response.json(
-        {
-          error:
-            'Модель не смогла обработать запрос. Это не обязательно safety-блокировка. Посмотри geminiDebug в логах сервера.',
-          reason: finishReason,
-          finishMessage: candidate?.finishMessage,
-          safetyRatings: candidate?.safetyRatings,
-        },
-        { status: 422 }
-      )
-    }
-
-    const rawAnswer = getSafeResponseText(response)
+    const rawAnswer = choice?.message?.content ?? ''
     const answer = normalizeAnswer(rawAnswer)
 
     if (!answer) {
       return Response.json(
         {
-          error: 'Пустой ответ от AI. Посмотри geminiDebug в логах сервера.',
-          debug: debugInfo,
+          error: 'Пустой ответ от AI. Попробуйте переформулировать запрос.',
+          finishReason: choice?.finish_reason,
         },
         { status: 500 }
       )
@@ -279,12 +182,10 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
 
-    console.error('Gemini API error:', err)
+    console.error('OpenAI API error:', err)
 
     return Response.json(
-      {
-        error: `Ошибка при обращении к AI: ${message}`,
-      },
+      { error: `Ошибка при обращении к AI: ${message}` },
       { status: 500 }
     )
   }

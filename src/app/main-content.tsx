@@ -49,14 +49,14 @@ export default function MainContent() {
   }
 
   const handleAnalyze = async () => {
-    if (!isChecked || !file || !question.trim() || isLoading) return
+    if (!question.trim() || isLoading || (file && !isChecked)) return
 
     setIsLoading(true)
     setError(null)
     setAnswer(null)
 
     const formData = new FormData()
-    formData.append('image', file)
+    if (file) formData.append('image', file)
     formData.append('question', question.trim())
 
     try {
@@ -97,16 +97,14 @@ export default function MainContent() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const canSubmit = isChecked && file !== null && question.trim().length > 0 && !isLoading
+  const canSubmit = question.trim().length > 0 && !isLoading && (!file || isChecked)
 
   const hint =
-    !isChecked
-      ? 'Подтвердите обезличивание изображения'
-      : !file
-        ? 'Загрузите изображение'
-        : !question.trim()
-          ? 'Введите вопрос'
-          : null
+    !question.trim()
+      ? 'Введите вопрос'
+      : file && !isChecked
+        ? 'Подтвердите обезличивание изображения'
+        : null
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -161,7 +159,7 @@ export default function MainContent() {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
           <div className="px-6 py-4 border-b border-slate-100">
             <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
-              Медицинское изображение
+              Медицинское изображение <span className="text-slate-400 normal-case font-normal tracking-normal">· необязательно</span>
             </h2>
           </div>
           <div className="p-6 space-y-5">
@@ -290,7 +288,7 @@ export default function MainContent() {
                 setQuestion(e.target.value)
                 localStorage.setItem(LS_QUESTION, e.target.value)
               }}
-              placeholder="Опишите, что вас интересует: видимые изменения, подозрительные области, характеристики структуры и другие клинически значимые наблюдения..."
+              placeholder="Задайте клинический вопрос или опишите, что вас интересует. Изображение можно приложить по желанию: видимые изменения, подозрительные области, характеристики структуры и другие клинически значимые наблюдения..."
               rows={4}
               disabled={isLoading}
               className="w-full rounded-lg border border-slate-200 px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none disabled:bg-slate-50 disabled:cursor-not-allowed transition-colors"
