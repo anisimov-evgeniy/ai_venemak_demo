@@ -139,7 +139,12 @@ export async function POST(request: Request) {
       ]
     : promptText
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+    // Кастомный эндпоинт OpenAI-совместимого провайдера (например, neuroapi.host).
+    // Если не задан — используется стандартный api.openai.com.
+    baseURL: process.env.OPENAI_BASE_URL || undefined,
+  })
 
   try {
     const completion = await openai.chat.completions.create({

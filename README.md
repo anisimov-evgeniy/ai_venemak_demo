@@ -96,7 +96,8 @@ npm run start
 
 | Переменная | Обязательная | Описание |
 |---|---|---|
-| `OPENAI_API_KEY` | Да | API-ключ OpenAI. Получить на [platform.openai.com](https://platform.openai.com) → API keys |
+| `OPENAI_API_KEY` | Да | API-ключ. При прямом доступе — с [platform.openai.com](https://platform.openai.com) → API keys. При работе через провайдера (например, neuroapi.host) — ключ из его кабинета |
+| `OPENAI_BASE_URL` | Нет | Эндпоинт OpenAI-совместимого провайдера. Для neuroapi.host — base URL из кабинета (напр. `https://neuroapi.host/v1`). Пусто = прямой `api.openai.com` |
 | `DEMO_ACCESS_TOKEN` | Нет | Если задан, страница доступна только по `/?token=значение`. Если не задан — доступ открыт |
 
 ---
