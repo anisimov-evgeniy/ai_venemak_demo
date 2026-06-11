@@ -1,13 +1,10 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import type { AnalyzeResponse, AnalyzeError } from '@/types'
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_SIZE = 10 * 1024 * 1024
-
-const LS_QUESTION = 'venemak_question'
-const LS_ANSWER = 'venemak_answer'
 
 export default function MainContent() {
   const [file, setFile] = useState<File | null>(null)
@@ -19,13 +16,6 @@ export default function MainContent() {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    const savedQuestion = localStorage.getItem(LS_QUESTION)
-    const savedAnswer = localStorage.getItem(LS_ANSWER)
-    if (savedQuestion) setQuestion(savedQuestion)
-    if (savedAnswer) setAnswer(savedAnswer)
-  }, [])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0]
@@ -43,7 +33,6 @@ export default function MainContent() {
     if (preview) URL.revokeObjectURL(preview)
     setError(null)
     setAnswer(null)
-    localStorage.removeItem(LS_ANSWER)
     setFile(selected)
     setPreview(URL.createObjectURL(selected))
   }
@@ -68,7 +57,6 @@ export default function MainContent() {
       } else {
         const text = (data as AnalyzeResponse).answer
         setAnswer(text)
-        localStorage.setItem(LS_ANSWER, text)
       }
     } catch {
       setError('Не удалось отправить запрос. Проверьте подключение к сети.')
@@ -92,8 +80,6 @@ export default function MainContent() {
     setIsChecked(false)
     setAnswer(null)
     setError(null)
-    localStorage.removeItem(LS_QUESTION)
-    localStorage.removeItem(LS_ANSWER)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -284,10 +270,7 @@ export default function MainContent() {
           <div className="p-6 space-y-4">
             <textarea
               value={question}
-              onChange={(e) => {
-                setQuestion(e.target.value)
-                localStorage.setItem(LS_QUESTION, e.target.value)
-              }}
+              onChange={(e) => setQuestion(e.target.value)}
               placeholder="Задайте клинический вопрос или опишите, что вас интересует. Изображение можно приложить по желанию: видимые изменения, подозрительные области, характеристики структуры и другие клинически значимые наблюдения..."
               rows={4}
               disabled={isLoading}
